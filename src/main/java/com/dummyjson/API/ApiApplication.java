@@ -1,23 +1,31 @@
+package com.dummyjson.API;
+
+import com.dummyjson.API.model.Carrinho;
+import com.dummyjson.API.model.ProdutoCarrinho;
+import com.dummyjson.API.model.RespostaCarrinhos;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.client.RestClient;
+
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @SpringBootApplication
-public class Application {
+public class ApiApplication {
     public static void main(String[] args) {
-        SpringApplication.run(Application.class, args);
+        SpringApplication.run(ApiApplication.class, args);
     }
 
     @Bean
-    public WebClient webClient() {
-        return WebClient.create("https://dummyjson.com");
+    RestClient dummyJsonClient(RestClient.Builder builder) {
+        return builder.baseUrl("https://dummyjson.com").build();
     }
 }
 
@@ -25,10 +33,12 @@ public class Application {
 class CarrinhoController {
     private final CarrinhoService service;
 
-    public CarrinhoController(CarrinhoService service) { this.service = service; }
+    CarrinhoController(CarrinhoService service) {
+        this.service = service;
+    }
 
     @GetMapping("/testar")
-    public String testarStreams() {
+    String testarStreams() {
         service.executarOperacoesStream();
         return "Processado com sucesso! Confira o console/terminal.";
     }
@@ -36,47 +46,77 @@ class CarrinhoController {
 
 @Service
 class CarrinhoService {
-    private final WebClient webClient;
+    private final RestClient dummyJsonClient;
 
-    public CarrinhoService(WebClient webClient) { this.webClient = webClient; }
+    CarrinhoService(RestClient dummyJsonClient) {
+        this.dummyJsonClient = dummyJsonClient;
+    }
 
-    public void ejecutarOperacoesStream() {
-        RespostaCarrinhos dados = webClient.get()
+    void executarOperacoesStream() {
+        RespostaCarrinhos dados = dummyJsonClient.get()
                 .uri("/carts?limit=0")
                 .retrieve()
-                .bodyToMono(RespostaCarrinhos.class)
-                .block();
+                .body(RespostaCarrinhos.class);
 
-        if (dados == null || dados.getCarts() == null) return;
+        if (dados == null || dados.getCarts() == null) {
+            return;
+        }
+
         List<Carrinho> lista = dados.getCarts();
 
         System.out.println("\n--- Filter: Economia > R$50 ---");
         lista.stream()
                 .filter(c -> c.getEconomia() > 50.0)
-                .forEach(c -> System.out.println("Carrinho: " + c.getId() + " economizou: " + c.getEconomia()));
+                .forEach(c -> System.out.println("Carrinho: " + c.getId()
+                        + " economizou: " + c.getEconomia()));
 
         System.out.println("\n--- FlatMap + Map: Nomes em Maiúsculo ---");
         lista.stream()
+                .filter(c -> c.getProducts() != null)
                 .flatMap(c -> c.getProducts().stream())
-                .map(p -> p.getTitle().toUpperCase())
+                .map(ProdutoCarrinho::getTitle)
+                .filter(title -> title != null)
+                .map(String::toUpperCase)
                 .limit(5)
-                .forEach(System.out.println);
+                .forEach(System.out::println);
 
         System.out.println("\n--- Sorted: Preço Decrescente ---");
         lista.stream()
+                .filter(c -> c.getProducts() != null)
                 .flatMap(c -> c.getProducts().stream())
-                .sorted((p1, p2) -> p2.getPrice().compareTo(p1.getPrice()))
+                .filter(p -> p.getPrice() != null)
+                .sorted(Comparator.comparing(ProdutoCarrinho::getPrice).reversed())
                 .limit(5)
                 .forEach(p -> System.out.println(p.getTitle() + " - R$" + p.getPrice()));
 
-        Integer totalItens = lista.stream()
+        int totalItens = lista.stream()
                 .map(Carrinho::getTotalQuantity)
-                .reduce(0, (sub, qtd) -> sub + qtd);
+                .filter(quantity -> quantity != null)
+                .reduce(0, Integer::sum);
         System.out.println("\n--- Reduce (Total Itens): " + totalItens + " ---");
 
         Map<Double, List<ProdutoCarrinho>> agrupaPreco = lista.stream()
+                .filter(c -> c.getProducts() != null)
                 .flatMap(c -> c.getProducts().stream())
+                .filter(p -> p.getPrice() != null)
                 .collect(Collectors.groupingBy(ProdutoCarrinho::getPrice));
         System.out.println("\n--- GroupingBy (Grupos Criados): " + agrupaPreco.size() + " ---");
+
+        encontrarProdutoMaisCaro(lista).ifPresent(produto ->
+                System.out.println("\n--- Produto mais caro: " + produto.getTitle()
+                        + " - R$" + produto.getPrice() + " ---"));
+    }
+
+    /** Retorna o produto de maior preço, ou Optional.empty() quando não há produtos válidos. */
+    Optional<ProdutoCarrinho> encontrarProdutoMaisCaro(List<Carrinho> carrinhos) {
+        if (carrinhos == null) {
+            return Optional.empty();
+        }
+
+        return carrinhos.stream()
+                .filter(c -> c != null && c.getProducts() != null)
+                .flatMap(c -> c.getProducts().stream())
+                .filter(p -> p != null && p.getPrice() != null)
+                .max(Comparator.comparing(ProdutoCarrinho::getPrice));
     }
 }
