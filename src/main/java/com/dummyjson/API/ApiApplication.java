@@ -64,6 +64,11 @@ class CarrinhoService {
 
         List<Carrinho> lista = dados.getCarts();
 
+        System.out.println("\n--- Carrinhos ---");
+        lista.forEach(c -> System.out.printf(
+                "Carrinho #%d | Usuário: %d | Itens: %d | Total: US$ %.2f%n",
+                c.getId(), c.getUserId(), c.getTotalQuantity(), c.getTotal()));
+
         System.out.println("\n--- Filter: Economia > R$50 ---");
         lista.stream()
                 .filter(c -> c.getEconomia() > 50.0)

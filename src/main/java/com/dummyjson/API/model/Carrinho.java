@@ -8,6 +8,7 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Carrinho {
     private Long id;
+    private Long userId;
     private Double total;
 
     @JsonProperty("discountedTotal")
@@ -31,6 +32,14 @@ public class Carrinho {
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public Long getUserId() {
+        return userId;
+    }
+
+    public void setUserId(Long userId) {
+        this.userId = userId;
     }
 
     public Double getTotal() {
